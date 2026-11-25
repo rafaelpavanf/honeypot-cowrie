@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel do honeypot SSH</title>
+<meta name="description" content="Dados reais de um honeypot SSH (Cowrie): quem tenta entrar, com quais senhas e o que faz depois.">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --base: #c3c2b7;
+  --s1: #2a78d6; --s2: #eb6834;
+  --border: rgba(11,11,11,.10); --hover: rgba(11,11,11,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --base: #383835;
+    --s1: #3987e5; --s2: #d95926;
+    --border: rgba(255,255,255,.10); --hover: rgba(255,255,255,.06);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --base: #383835;
+  --s1: #3987e5; --s2: #d95926;
+  --border: rgba(255,255,255,.10); --hover: rgba(255,255,255,.06);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px; line-height: 1.5;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 16px 64px; }
+header.top { margin-bottom: 20px; }
+h1 { font-size: clamp(22px, 4.2vw, 30px); line-height: 1.2; margin: 0 0 6px; font-weight: 650; letter-spacing: -.01em; }
+.lede { margin: 0; color: var(--ink-2); max-width: 70ch; }
+.period { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px; min-width: 0;
+}
+.card-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0; line-height: 1.35; }
+.sub { margin: 4px 0 12px; font-size: 13px; color: var(--ink-2); }
+.tbl {
+  flex: none; font: inherit; font-size: 12px; color: var(--ink-2);
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 9px; cursor: pointer;
+}
+.tbl:hover { background: var(--hover); }
+.tbl[aria-pressed="true"] { color: var(--ink); background: var(--hover); }
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+.stack { display: grid; gap: 12px; }
+.row-top { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 820px) { .row-top { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+.hero .big { font-size: clamp(48px, 9vw, 64px); line-height: 1.05; font-weight: 650; letter-spacing: -.02em; margin: 6px 0 4px; }
+.hero .lab { font-size: 13px; color: var(--ink-2); margin: 0; }
+.kpis { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tile .v { font-size: 26px; font-weight: 650; line-height: 1.15; margin: 4px 0 2px; letter-spacing: -.01em; }
+.tile .l { font-size: 13px; color: var(--ink-2); margin: 0; }
+.tile .n { font-size: 12px; color: var(--ink-2); margin: 6px 0 0; }
+
+.callout h2 { font-size: 17px; }
+.callout p { margin: 8px 0 0; color: var(--ink-2); max-width: 80ch; }
+.callout p strong { color: var(--ink); font-weight: 600; }
+.seg { display: flex; gap: 2px; height: 8px; margin: 14px 0 8px; }
+.seg span { min-width: 3px; }
+.seg span:first-child { border-radius: 4px 0 0 4px; }
+.seg span:last-child { border-radius: 0 4px 4px 0; }
+.seg span:only-child { border-radius: 4px; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); }
+.keys i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.keys b { color: var(--ink); font-weight: 600; }
+
+.cols { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 470px), 1fr)); }
+
+.viz svg { display: block; max-width: 100%; overflow: visible; }
+.viz svg text { font-family: inherit; }
+.hot { filter: brightness(1.14); }
+.note { margin: 8px 0 0; font-size: 12px; color: var(--ink-2); }
+
+.hb { display: flex; align-items: center; gap: 10px; padding: 3px 0; border-radius: 6px; }
+.hb:hover { background: var(--hover); }
+.hb-l { flex: none; width: 36%; max-width: 200px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb-t { flex: 1; min-width: 0; display: flex; align-items: center; }
+.hb-b { height: 12px; min-width: 2px; border-radius: 0 4px 4px 0; flex: none; }
+.hb-v { margin-left: 8px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-left: 14px; padding-right: 18px; }
+table.last-num td.num, table.last-num th.num { padding-right: 0; }
+td code { word-break: break-all; }
+td a { color: var(--s1); }
+.tag { display: inline-block; font-size: 12px; color: var(--ink-2); }
+
+.about p { margin: 6px 0 0; color: var(--ink-2); font-size: 13.5px; max-width: 80ch; }
+.about p strong { color: var(--ink); font-weight: 600; }
+footer { margin-top: 16px; font-size: 12.5px; color: var(--ink-2); }
+footer a { color: var(--s1); }
+
+.tip {
+  position: fixed; z-index: 10; pointer-events: none; max-width: 280px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0,0,0,.14);
+}
+.tip[hidden] { display: none; }
+.tip-t { color: var(--ink-2); margin-bottom: 3px; }
+.tip-r { display: flex; align-items: center; gap: 7px; }
+.tip-r strong { font-size: 14px; font-weight: 650; }
+.tip-r .nm { color: var(--ink-2); }
+.tip-r .key { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+.tip-r.extra .nm { color: var(--ink-2); font-style: italic; }
+noscript { display: block; padding: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main id="app"><noscript>Este painel precisa de JavaScript para desenhar os gráficos.</noscript></main>
+</div>
+<script>
+window.__DADOS__ = {"gerado_em": "2026-11-25T16:34:08+00:00", "periodo": {"primeiro_evento_utc": "2026-11-09T18:21:03.399452Z", "ultimo_evento_utc": "2026-11-25T16:29:08.011134Z"}, "qualidade": {"linhas_lidas": 861754, "linhas_invalidas": 0, "eventos_ignorados_do_meu_ip": 15}, "acessos": {"total": 88230, "aceitos": 87771, "recusados": 459, "pct_aceitos": 99.5, "tentativas_com_chave_publica": 209, "ips_distintos": 2336, "combinacoes_usuario_senha_distintas": 35619, "pct_dos_5_ips_mais_ativos": 45.9}, "ip_mais_ativo": {"acessos": 31062, "pct_dos_acessos": 35.2, "acessos_demais": 57168, "ips_demais": 2335, "comandos": 31061, "senhas_distintas": 31060, "comando_principal": "echo -e \"\\x6F\\x6B\"", "comando_principal_total": 31061, "primeiro_visto_utc": "2026-11-16T11:53:47.921704Z", "ultimo_visto_utc": "2026-11-16T13:11:48.630522Z", "duracao_s": 4680.708818}, "por_dia_utc": [{"dia": "2026-11-09", "acessos": 977, "aceitos": 962, "ips_unicos": 6, "acessos_ip_mais_ativo": 0, "acessos_demais": 977}, {"dia": "2026-11-10", "acessos": 1351, "aceitos": 1297, "ips_unicos": 22, "acessos_ip_mais_ativo": 0, "acessos_demais": 1351}, {"dia": "2026-11-11", "acessos": 1439, "aceitos": 1399, "ips_unicos": 33, "acessos_ip_mais_ativo": 0, "acessos_demais": 1439}, {"dia": "2026-11-12", "acessos": 3028, "aceitos": 2988, "ips_unicos": 74, "acessos_ip_mais_ativo": 0, "acessos_demais": 3028}, {"dia": "2026-11-13", "acessos": 4469, "aceitos": 4447, "ips_unicos": 117, "acessos_ip_mais_ativo": 0, "acessos_demais": 4469}, {"dia": "2026-11-14", "acessos": 3418, "aceitos": 3400, "ips_unicos": 140, "acessos_ip_mais_ativo": 0, "acessos_demais": 3418}, {"dia": "2026-11-15", "acessos": 2237, "aceitos": 2226, "ips_unicos": 128, "acessos_ip_mais_ativo": 0, "acessos_demais": 2237}, {"dia": "2026-11-16", "acessos": 32521, "aceitos": 32509, "ips_unicos": 131, "acessos_ip_mais_ativo": 31062, "acessos_demais": 1459}, {"dia": "2026-11-17", "acessos": 3311, "aceitos": 3295, "ips_unicos": 278, "acessos_ip_mais_ativo": 0, "acessos_demais": 3311}, {"dia": "2026-11-18", "acessos": 8187, "aceitos": 8164, "ips_unicos": 70, "acessos_ip_mais_ativo": 0, "acessos_demais": 8187}, {"dia": "2026-11-19", "acessos": 2568, "aceitos": 2555, "ips_unicos": 29, "acessos_ip_mais_ativo": 0, "acessos_demais": 2568}, {"dia": "2026-11-20", "acessos": 5151, "aceitos": 5138, "ips_unicos": 23, "acessos_ip_mais_ativo": 0, "acessos_demais": 5151}, {"dia": "2026-11-21", "acessos": 3338, "aceitos": 3327, "ips_unicos": 28, "acessos_ip_mais_ativo": 0, "acessos_demais": 3338}, {"dia": "2026-11-22", "acessos": 4433, "aceitos": 4382, "ips_unicos": 30, "acessos_ip_mais_ativo": 0, "acessos_demais": 4433}, {"dia": "2026-11-23", "acessos": 2988, "aceitos": 2932, "ips_unicos": 574, "acessos_ip_mais_ativo": 0, "acessos_demais": 2988}, {"dia": "2026-11-24", "acessos": 7057, "aceitos": 7002, "ips_unicos": 324, "acessos_ip_mais_ativo": 0, "acessos_demais": 7057}, {"dia": "2026-11-25", "acessos": 1757, "aceitos": 1748, "ips_unicos": 21, "acessos_ip_mais_ativo": 0, "acessos_demais": 1757}], "por_hora_utc": [{"hora": "00", "acessos": 3297, "acessos_ip_mais_ativo": 0, "acessos_demais": 3297}, {"hora": "01", "acessos": 2946, "acessos_ip_mais_ativo": 0, "acessos_demais": 2946}, {"hora": "02", "acessos": 4047, "acessos_ip_mais_ativo": 0, "acessos_demais": 4047}, {"hora": "03", "acessos": 3563, "acessos_ip_mais_ativo": 0, "acessos_demais": 3563}, {"hora": "04", "acessos": 1154, "acessos_ip_mais_ativo": 0, "acessos_demais": 1154}, {"hora": "05", "acessos": 896, "acessos_ip_mais_ativo": 0, "acessos_demais": 896}, {"hora": "06", "acessos": 715, "acessos_ip_mais_ativo": 0, "acessos_demais": 715}, {"hora": "07", "acessos": 674, "acessos_ip_mais_ativo": 0, "acessos_demais": 674}, {"hora": "08", "acessos": 2668, "acessos_ip_mais_ativo": 0, "acessos_demais": 2668}, {"hora": "09", "acessos": 3592, "acessos_ip_mais_ativo": 0, "acessos_demais": 3592}, {"hora": "10", "acessos": 2023, "acessos_ip_mais_ativo": 0, "acessos_demais": 2023}, {"hora": "11", "acessos": 4388, "acessos_ip_mais_ativo": 2464, "acessos_demais": 1924}, {"hora": "12", "acessos": 25830, "acessos_ip_mais_ativo": 23886, "acessos_demais": 1944}, {"hora": "13", "acessos": 7159, "acessos_ip_mais_ativo": 4712, "acessos_demais": 2447}, {"hora": "14", "acessos": 3478, "acessos_ip_mais_ativo": 0, "acessos_demais": 3478}, {"hora": "15", "acessos": 3563, "acessos_ip_mais_ativo": 0, "acessos_demais": 3563}, {"hora": "16", "acessos": 2840, "acessos_ip_mais_ativo": 0, "acessos_demais": 2840}, {"hora": "17", "acessos": 2009, "acessos_ip_mais_ativo": 0, "acessos_demais": 2009}, {"hora": "18", "acessos": 1746, "acessos_ip_mais_ativo": 0, "acessos_demais": 1746}, {"hora": "19", "acessos": 1608, "acessos_ip_mais_ativo": 0, "acessos_demais": 1608}, {"hora": "20", "acessos": 2800, "acessos_ip_mais_ativo": 0, "acessos_demais": 2800}, {"hora": "21", "acessos": 2440, "acessos_ip_mais_ativo": 0, "acessos_demais": 2440}, {"hora": "22", "acessos": 1966, "acessos_ip_mais_ativo": 0, "acessos_demais": 1966}, {"hora": "23", "acessos": 2828, "acessos_ip_mais_ativo": 0, "acessos_demais": 2828}], "top_credenciais": [{"valor": "root:admin", "total": 248}, {"valor": "root:123456", "total": 153}, {"valor": "root:1234", "total": 144}, {"valor": "root:111111", "total": 144}, {"valor": "root:12345", "total": 136}, {"valor": "root:123123", "total": 125}, {"valor": "root:123", "total": 124}, {"valor": "root:12345678", "total": 121}, {"valor": "root:123456789", "total": 115}, {"valor": "admin:admin", "total": 113}, {"valor": "root:password", "total": 105}, {"valor": "ubnt:ubnt", "total": 102}, {"valor": "root:P@ssw0rd", "total": 101}, {"valor": "root:root", "total": 97}, {"valor": "root:admin123", "total": 95}, {"valor": "root:passw0rd", "total": 93}, {"valor": "admin:123456", "total": 93}, {"valor": "root:qwerty", "total": 92}, {"valor": "squid:squid", "total": 92}, {"valor": "root:root123", "total": 90}], "top_usuarios": [{"valor": "root", "total": 53321}, {"valor": "admin", "total": 2575}, {"valor": "ubuntu", "total": 2176}, {"valor": "user", "total": 1018}, {"valor": "deploy", "total": 807}, {"valor": "test", "total": 658}, {"valor": "user1", "total": 467}, {"valor": "debian", "total": 447}, {"valor": "guest", "total": 388}, {"valor": "claude", "total": 367}], "top_usuarios_sem_ip_mais_ativo": [{"valor": "root", "total": 22259}, {"valor": "admin", "total": 2575}, {"valor": "ubuntu", "total": 2176}, {"valor": "user", "total": 1018}, {"valor": "deploy", "total": 807}, {"valor": "test", "total": 658}, {"valor": "user1", "total": 467}, {"valor": "debian", "total": 447}, {"valor": "guest", "total": 388}, {"valor": "claude", "total": 367}], "top_senhas": [{"valor": "123456", "total": 2942}, {"valor": "123", "total": 1551}, {"valor": "1234", "total": 1307}, {"valor": "12345678", "total": 871}, {"valor": "1", "total": 772}, {"valor": "password", "total": 700}, {"valor": "root", "total": 690}, {"valor": "12345", "total": 671}, {"valor": "admin", "total": 541}, {"valor": "123456789", "total": 509}, {"valor": "123123", "total": 385}, {"valor": "111111", "total": 327}, {"valor": "P@ssw0rd", "total": 298}, {"valor": "admin123", "total": 290}, {"valor": "qwerty", "total": 282}], "comandos": {"total": 233277, "distintos": 121044, "top": [{"valor": "uname -s -v -n -r -m", "total": 46576}, {"valor": "echo -e \"\\x6F\\x6B\"", "total": 31061}, {"valor": "if IFS=' ' read -r _filter_pid _filter_rest \u003c /proc/self/stat; then _filter_stat", "total": 8032}, {"valor": "v=outer; (v=inner; printf 'child=%s\\n' \"$v\"); printf 'parent=%s\\n' \"$v\"", "total": 4016}, {"valor": "printf '%s\\n' 'a b;$()'", "total": 4016}, {"valor": "/bin/./uname -s -v -n -r -m", "total": 1948}, {"valor": "chmod +x '/root/.16'", "total": 196}, {"valor": "echo 'SSH check'", "total": 86}, {"valor": "uname -a", "total": 15}, {"valor": "chmod +x '/dev/shm/.16'", "total": 14}, {"valor": "uname -s -m", "total": 10}, {"valor": "/ip cloud print", "total": 8}, {"valor": "ifconfig", "total": 8}, {"valor": "cat /proc/cpuinfo", "total": 8}, {"valor": "ps | grep '[Mm]iner'", "total": 8}, {"valor": "ps -ef | grep '[Mm]iner'", "total": 8}, {"valor": "ls -la ~/.local/share/TelegramDesktop/tdata /home/*/.local/share/TelegramDesktop", "total": 8}, {"valor": "locate D877F783D5D3EF8Cs", "total": 8}, {"valor": "echo Hi | cat -n", "total": 8}, {"valor": "echo '123qwerty' | sudo -S sh -c 'chmod +x '\\''/root/.16'\\''' || echo '123qwerty", "total": 5}]}, "sessoes": {"total": 91448, "com_comandos": 83754, "duracao_mediana_s": null, "duracao_media_s": null}, "arquivos_enviados": [{"nome": ".16", "sha256": "a151d3f4f2422531f30a843ffb35479596c86722bb103bdf8591105687f9b125", "total": 105}, {"nome": "sshd", "sha256": "94f2e4d8d4436874785cd14e6e6d403507b8750852f7f2040352069a75da4c00", "total": 3}, {"nome": "zHIme6g8", "sha256": "6d1fe6ab3cd04ca5d1ab790339ee2b6577553bc042af3b7587ece0c195267c9b", "total": 2}, {"nome": ".16", "sha256": "6affa839f6a40131f6776b7227516784ba926c48b4614a0478865ab0514903cc", "total": 1}], "arquivos_baixados": [], "tuneis": {"total": 3778, "portas_de_destino": [{"valor": "25", "total": 1131}, {"valor": "22", "total": 814}, {"valor": "2535", "total": 674}, {"valor": "443", "total": 585}, {"valor": "80", "total": 574}]}, "clientes_ssh": [{"valor": "SSH-2.0-Go", "total": 85780}, {"valor": "SSH-2.0-OpenSSH_7.4", "total": 2017}, {"valor": "SSH-2.0-PuTTY_Release_0.84", "total": 686}, {"valor": "SSH-2.0-AsyncSSH_2.1.0", "total": 567}, {"valor": "SSH-2.0-PUTTY", "total": 69}, {"valor": "SSH-2.0-Nmap-SSH2-Hostkey", "total": 66}, {"valor": "SSH-2.0-ZGrab ZGrab SSH Survey", "total": 59}, {"valor": "GET / HTTP/1.1", "total": 42}, {"valor": "SSH-2.0-libssh_0.10.5", "total": 29}, {"valor": "MGLNDD_[ip]_22", "total": 22}], "eventos": [{"valor": "cowrie.command.input", "total": 233277}, {"valor": "cowrie.session.connect", "total": 91448}, {"valor": "cowrie.session.closed", "total": 91448}, {"valor": "cowrie.client.version", "total": 89637}, {"valor": "cowrie.client.kex", "total": 89437}, {"valor": "cowrie.login.success", "total": 87771}, {"valor": "cowrie.session.params", "total": 83930}, {"valor": "cowrie.log.closed", "total": 83930}, {"valor": "cowrie.client.size", "total": 4047}, {"valor": "cowrie.direct-tcpip.request", "total": 3778}, {"valor": "cowrie.direct-tcpip.data", "total": 1130}, {"valor": "cowrie.direct-tcpip.ja4h", "total": 574}, {"valor": "cowrie.direct-tcpip.ja4", "total": 527}, {"valor": "cowrie.login.failed", "total": 459}, {"valor": "cowrie.client.fingerprint", "total": 209}, {"valor": "cowrie.session.file_upload", "total": 111}, {"valor": "cowrie.command.failed", "total": 8}, {"valor": "cowrie.client.kex_unexpected", "total": 8}, {"valor": "cowrie.client.malformed_packet", "total": 5}, {"valor": "cowrie.client.var", "total": 5}], "paises": [{"valor": "Estados Unidos", "total": 563}, {"valor": "Coreia do Sul", "total": 136}, {"valor": "Rússia", "total": 133}, {"valor": "Índia", "total": 125}, {"valor": "Brasil", "total": 108}, {"valor": "Argentina", "total": 84}, {"valor": "Holanda", "total": 75}, {"valor": "França", "total": 63}, {"valor": "Suécia", "total": 63}, {"valor": "Malásia", "total": 60}, {"valor": "Reino Unido", "total": 59}, {"valor": "Ucrânia", "total": 59}, {"valor": "Alemanha", "total": 45}, {"valor": "Taiwan", "total": 44}, {"valor": "Hong Kong, Região Admin. Especial da China", "total": 41}, {"valor": "Iraque", "total": 30}, {"valor": "Canadá", "total": 30}, {"valor": "Indonésia", "total": 28}, {"valor": "Vietnã", "total": 27}, {"valor": "Turquia", "total": 24}, {"valor": "Bélgica", "total": 23}, {"valor": "Tailândia", "total": 19}, {"valor": "México", "total": 19}, {"valor": "Tunísia", "total": 19}, {"valor": "Colômbia", "total": 18}, {"valor": "Japão", "total": 17}, {"valor": "Chile", "total": 17}, {"valor": "Irã", "total": 17}, {"valor": "Uzbequistão", "total": 17}, {"valor": "Israel", "total": 16}, {"valor": "Bangladesh", "total": 15}, {"valor": "Austrália", "total": 15}, {"valor": "Polônia", "total": 12}, {"valor": "Espanha", "total": 12}, {"valor": "Paquistão", "total": 11}, {"valor": "Etiópia", "total": 10}, {"valor": "Finlândia", "total": 10}, {"valor": "Itália", "total": 10}, {"valor": "Singapura", "total": 10}, {"valor": "Venezuela", "total": 10}, {"valor": "África do Sul", "total": 9}, {"valor": "Andorra", "total": 8}, {"valor": "Geórgia", "total": 8}, {"valor": "Afeganistão", "total": 8}, {"valor": "Mianmar", "total": 8}, {"valor": "Hungria", "total": 7}, {"valor": "Lituânia", "total": 7}, {"valor": "Filipinas", "total": 7}, {"valor": "Cazaquistão", "total": 7}, {"valor": "Suíça", "total": 6}, {"valor": "Bulgária", "total": 6}, {"valor": "Portugal", "total": 6}, {"valor": "Romênia", "total": 6}, {"valor": "Emirados Árabes Unidos", "total": 6}, {"valor": "Moçambique", "total": 6}, {"valor": "Marrocos", "total": 6}, {"valor": "Nigéria", "total": 5}, {"valor": "Egito", "total": 5}, {"valor": "Armênia", "total": 5}, {"valor": "Estônia", "total": 4}, {"valor": "Arábia Saudita", "total": 4}, {"valor": "Côte d’Ivoire", "total": 4}, {"valor": "Senegal", "total": 4}, {"valor": "Chéquia", "total": 4}, {"valor": "Noruega", "total": 4}, {"valor": "Quênia", "total": 4}, {"valor": "Jordânia", "total": 4}, {"valor": "Sérvia", "total": 4}, {"valor": "Peru", "total": 3}, {"valor": "Panamá", "total": 3}, {"valor": "Nepal", "total": 3}, {"valor": "Equador", "total": 3}, {"valor": "Argélia", "total": 3}, {"valor": "Brunei", "total": 3}, {"valor": "Líbano", "total": 3}, {"valor": "Bahrain", "total": 3}, {"valor": "Omã", "total": 3}, {"valor": "Moldávia", "total": 3}, {"valor": "Bósnia e Herzegovina", "total": 2}, {"valor": "Líbia", "total": 2}, {"valor": "República Tcheca", "total": 2}, {"valor": "República Popular Democrática do Laos", "total": 2}, {"valor": "Camboja", "total": 2}, {"valor": "Seychelles", "total": 2}, {"valor": "Zâmbia", "total": 2}, {"valor": "Kosovo", "total": 2}, {"valor": "Togo", "total": 2}, {"valor": "Tadjiquistão", "total": 2}, {"valor": "Burquina Faso", "total": 2}, {"valor": "Luxemburgo", "total": 1}, {"valor": "República dos Camarões", "total": 1}, {"valor": "El Salvador", "total": 1}, {"valor": "Malta", "total": 1}, {"valor": "Irlanda", "total": 1}, {"valor": "Islândia", "total": 1}, {"valor": "Ruanda", "total": 1}, {"valor": "Bolívia", "total": 1}, {"valor": "Casaquistão", "total": 1}, {"valor": "Uganda", "total": 1}, {"valor": "Essuatíni", "total": 1}, {"valor": "Áustria", "total": 1}, {"valor": "Síria", "total": 1}, {"valor": "Iêmen", "total": 1}, {"valor": "Costa Rica", "total": 1}, {"valor": "República Dominicana", "total": 1}, {"valor": "Palestina", "total": 1}, {"valor": "China", "total": 1}, {"valor": "Nicarágua", "total": 1}, {"valor": "Bielorrússia", "total": 1}, {"valor": "Congo", "total": 1}, {"valor": "Dinamarca", "total": 1}, {"valor": "Paraguai", "total": 1}, {"valor": "Catar", "total": 1}, {"valor": "Eslovênia", "total": 1}, {"valor": "Maurício", "total": 1}, {"valor": "Madagascar", "total": 1}, {"valor": "Azerbaijão", "total": 1}], "paises_distintos": 117, "paises_fonte": "ip-api.com", "virustotal": [{"sha256_prefixo": "a151d3f4f242", "placar": "36/64", "rotulo": "miner.malxmr/rootkit", "consultado_em": "2026-11-20"}, {"sha256_prefixo": "94f2e4d8d443", "placar": "48/64", "rotulo": "miner.genericrxss/multiverze", "consultado_em": "2026-11-20"}, {"sha256_prefixo": "6affa839f6a4", "placar": "18/63", "rotulo": "trojan.genericfca/qwexlafiba", "consultado_em": "2026-11-20"}, {"sha256_prefixo": "6d1fe6ab3cd0", "placar": "40/61", "rotulo": "trojan.ircbot/shell (bot de IRC)", "consultado_em": "2026-11-25"}], "_meta": {"autor": "Rafael Pavan", "repo": "https://github.com/rafaelpavanf/honeypot-cowrie"}};
+</script>
+<script>
+(function () {
+'use strict';
+var D = window.__DADOS__;
+var app = document.getElementById('app');
+if (!D) { app.textContent = 'Sem dados para mostrar.'; return; }
+var META = D._meta || {};
+var NS = 'http://www.w3.org/2000/svg';
+
+/* ---------- utilidades ---------- */
+function h(tag, attrs, kids) {
+  var e = document.createElement(tag);
+  for (var k in (attrs || {})) {
+    var v = attrs[k];
+    if (v == null) continue;
+    if (k === 'text') e.textContent = v;
+    else if (k === 'class') e.className = v;
+    else e.setAttribute(k, v);
+  }
+  (kids || []).forEach(function (c) {
+    if (c == null) return;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return e;
+}
+function sv(tag, attrs, kids) {
+  var e = document.createElementNS(NS, tag);
+  for (var k in (attrs || {})) {
+    var v = attrs[k];
+    if (v == null) continue;
+    if (k === 'text') e.textContent = v; else e.setAttribute(k, v);
+  }
+  (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
+  return e;
+}
+var nf = new Intl.NumberFormat('pt-BR');
+function fmt(n) { return nf.format(n); }
+function pc(n) { return (Math.round(n * 10) / 10).toString().replace('.', ',') + '%'; }
+function axisFmt(n) {
+  return n >= 10000 ? (n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : fmt(n);
+}
+function ddmm(dia) { return dia.slice(8, 10) + '/' + dia.slice(5, 7); }
+function dataHora(iso) { return iso ? ddmm(iso.slice(0, 10)) + ' ' + iso.slice(11, 16) : ''; }
+function dur(seg) {
+  if (seg == null) return null;
+  if (seg < 90) return Math.round(seg) + ' segundos';
+  if (seg < 7200) return Math.round(seg / 60) + ' minutos';
+  var hh = seg / 3600;
+  return (hh < 48 ? hh.toFixed(1).replace('.', ',') + ' horas' : Math.round(hh / 24) + ' dias');
+}
+function niceTicks(max, count) {
+  var raw = max / count;
+  var p = Math.pow(10, Math.floor(Math.log10(raw)));
+  var f = raw / p;
+  var step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  step = Math.max(step, 1);
+  var t = [0];
+  while (t[t.length - 1] < max) t.push(Math.round((t[t.length - 1] + step) * 1e6) / 1e6);
+  return t;
+}
+function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+
+/* ---------- tooltip ---------- */
+var tip = h('div', { 'class': 'tip', role: 'status' });
+tip.hidden = true;
+document.body.appendChild(tip);
+function showTip(x, y, title, rows) {
+  tip.textContent = '';
+  if (title) tip.appendChild(h('div', { 'class': 'tip-t', text: title }));
+  rows.forEach(function (r) {
+    var row = h('div', { 'class': 'tip-r' + (r.extra ? ' extra' : '') });
+    if (r.color) row.appendChild(h('span', { 'class': 'key', style: 'background:' + r.color }));
+    row.appendChild(h('strong', { text: r.value }));
+    if (r.name) row.appendChild(h('span', { 'class': 'nm', text: r.name }));
+    tip.appendChild(row);
+  });
+  tip.hidden = false;
+  var w = tip.offsetWidth, hh = tip.offsetHeight;
+  var nx = x + 14, ny = y - hh - 10;
+  if (nx + w > window.innerWidth - 8) nx = x - w - 14;
+  if (nx < 8) nx = 8;
+  if (ny < 8) ny = y + 16;
+  tip.style.left = nx + 'px';
+  tip.style.top = ny + 'px';
+}
+function hideTip() { tip.hidden = true; }
+function tipAtElement(el, title, rows) {
+  var r = el.getBoundingClientRect();
+  showTip(r.left + r.width / 2, r.top + 8, title, rows);
+}
+
+/* ---------- cartão (gráfico + tabela equivalente) ---------- */
+function makeTable(cols, rows) {
+  var thead = h('tr', {}, cols.map(function (c) { return h('th', { 'class': c.num ? 'num' : null, text: c.label }); }));
+  var tbody = rows.map(function (r) {
+    return h('tr', {}, cols.map(function (c, i) {
+      var v = r[i];
+      return h('td', { 'class': c.num ? 'num' : null, text: typeof v === 'number' ? fmt(v) : String(v) });
+    }));
+  });
+  return h('table', { 'class': cols[cols.length - 1].num ? 'last-num' : null }, [h('thead', {}, [thead]), h('tbody', {}, tbody)]);
+}
+function card(parent, o) {
+  var sec = h('section', { 'class': 'card' + (o.cls ? ' ' + o.cls : '') });
+  var head = h('div', { 'class': 'card-h' }, [h('h2', { text: o.title })]);
+  var btn = null;
+  if (!o.noToggle) {
+    btn = h('button', { type: 'button', 'class': 'tbl', 'aria-pressed': 'false', text: 'Ver tabela' });
+    head.appendChild(btn);
+  }
+  sec.appendChild(head);
+  if (o.sub) sec.appendChild(h('p', { 'class': 'sub', text: o.sub }));
+  var viz = h('div', { 'class': 'viz' });
+  var tw = h('div', { 'class': 'tw' });
+  tw.hidden = true;
+  sec.appendChild(viz);
+  sec.appendChild(tw);
+  var built = false;
+  function draw() {
+    viz.textContent = '';
+    var meta = o.build(viz) || {};
+    if (!built) {
+      built = true;
+      if (meta.cols && btn) tw.appendChild(makeTable(meta.cols, meta.rows));
+      else if (btn) btn.hidden = true;
+      if (o.footnote) sec.appendChild(h('p', { 'class': 'note', text: o.footnote }));
+    }
+  }
+  if (btn) {
+    btn.addEventListener('click', function () {
+      var showTable = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(showTable));
+      btn.textContent = showTable ? 'Ver gráfico' : 'Ver tabela';
+      tw.hidden = !showTable;
+      viz.hidden = showTable;
+      if (!showTable) draw();
+    });
+  }
+  parent.appendChild(sec);
+  draw();
+  if (window.ResizeObserver && !o.noResize) {
+    var last = viz.clientWidth;
+    new ResizeObserver(function () {
+      var w = viz.clientWidth;
+      if (w && Math.abs(w - last) > 1) { last = w; draw(); }
+    }).observe(viz);
+  }
+  return sec;
+}
+
+/* ---------- gráficos SVG ---------- */
+function frame(viz, o) {
+  var W = Math.max(viz.clientWidth || 320, 260), H = o.height || 230;
+  var m = { l: 46, r: 10, t: 24, b: 30 };
+  var pw = W - m.l - m.r, ph = H - m.t - m.b;
+  var max = Math.max.apply(null, o.values.concat([1]));
+  var ticks = niceTicks(max, 4), ymax = ticks[ticks.length - 1];
+  var svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': o.aria });
+  ticks.forEach(function (v) {
+    var y = m.t + ph - (v / ymax) * ph;
+    svg.appendChild(sv('line', { x1: m.l, x2: m.l + pw, y1: y, y2: y, stroke: v === 0 ? 'var(--base)' : 'var(--grid)', 'stroke-width': 1 }));
+    svg.appendChild(sv('text', { x: m.l - 8, y: y + 4, 'text-anchor': 'end', 'font-size': 11.5, fill: 'var(--ink-2)', text: axisFmt(v) }));
+  });
+  var n = o.cats.length, band = pw / n;
+  var every = Math.max(1, Math.ceil(44 / band));
+  o.cats.forEach(function (c, i) {
+    if (i % every !== 0) return;
+    svg.appendChild(sv('text', { x: m.l + band * (i + .5), y: m.t + ph + 18, 'text-anchor': 'middle', 'font-size': 11.5, fill: 'var(--ink-2)', text: c.label }));
+  });
+  return { svg: svg, W: W, H: H, m: m, pw: pw, ph: ph, ymax: ymax, band: band, n: n,
+    y: function (v) { return m.t + ph - (v / ymax) * ph; },
+    cx: function (i) { return m.l + band * (i + .5); } };
+}
+function rowsFor(o, i) {
+  var rows = [{ value: fmt(o.values[i]), name: o.name, color: 'var(--s1)' }];
+  (o.extra || []).forEach(function (e) { rows.push({ value: fmt(e.values[i]), name: e.name, extra: true }); });
+  return rows;
+}
+function titleFor(o, i) {
+  var c = o.cats[i];
+  return c.title + (c.partial ? ' (dia incompleto)' : '');
+}
+function roundedTop(x, y, w, hgt, r) {
+  r = Math.min(r, hgt, w / 2);
+  return 'M' + x + ',' + (y + hgt) + 'L' + x + ',' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y +
+    'L' + (x + w - r) + ',' + y + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) + 'L' + (x + w) + ',' + (y + hgt) + 'Z';
+}
+function columns(viz, o) {
+  var f = frame(viz, o), bw = Math.min(24, f.band * 0.62);
+  var peak = o.values.indexOf(Math.max.apply(null, o.values));
+  o.values.forEach(function (v, i) {
+    var g = sv('g'), x = f.cx(i) - bw / 2;
+    if (v > 0) {
+      var top = f.y(v), hh = Math.max(f.y(0) - top, 1);
+      g.appendChild(sv('path', { d: roundedTop(x, top, bw, hh, 4), fill: 'var(--s1)' }));
+    }
+    f.svg.appendChild(g);
+    var hit = sv('rect', { x: f.m.l + f.band * i, y: f.m.t, width: f.band, height: f.ph + 26, fill: 'transparent', tabindex: 0,
+      'aria-label': titleFor(o, i) + ': ' + fmt(v) + ' ' + o.name });
+    function on(ev) { g.setAttribute('class', 'hot'); if (ev) showTip(ev.clientX, ev.clientY, titleFor(o, i), rowsFor(o, i)); else tipAtElement(g.firstChild || hit, titleFor(o, i), rowsFor(o, i)); }
+    function off() { g.removeAttribute('class'); hideTip(); }
+    hit.addEventListener('pointermove', on);
+    hit.addEventListener('pointerleave', off);
+    hit.addEventListener('focus', function () { on(null); });
+    hit.addEventListener('blur', off);
+    f.svg.appendChild(hit);
+  });
+  if (o.values[peak] > 0) {
+    f.svg.appendChild(sv('text', { x: f.cx(peak), y: f.y(o.values[peak]) - 7, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600, fill: 'var(--ink)', text: fmt(o.values[peak]) }));
+  }
+  viz.appendChild(f.svg);
+}
+function lineChart(viz, o) {
+  var f = frame(viz, o), n = f.n, pts = o.values.map(function (v, i) { return [f.cx(i), f.y(v)]; });
+  var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0] + ',' + p[1]; }).join('');
+  var base = f.y(0);
+  f.svg.appendChild(sv('path', { d: d + 'L' + pts[n - 1][0] + ',' + base + 'L' + pts[0][0] + ',' + base + 'Z', fill: 'var(--s1)', 'fill-opacity': .10 }));
+  f.svg.appendChild(sv('path', { d: d, fill: 'none', stroke: 'var(--s1)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  var dots = pts.map(function (p) {
+    var c = sv('circle', { cx: p[0], cy: p[1], r: 4, fill: 'var(--s1)', stroke: 'var(--surface)', 'stroke-width': 2 });
+    f.svg.appendChild(c);
+    return c;
+  });
+  var last = pts[n - 1];
+  f.svg.appendChild(sv('text', { x: Math.min(last[0], f.W - f.m.r), y: last[1] - 11, 'text-anchor': 'end', 'font-size': 12, 'font-weight': 600, fill: 'var(--ink)', text: fmt(o.values[n - 1]) }));
+  var cross = sv('line', { y1: f.m.t, y2: base, stroke: 'var(--base)', 'stroke-width': 1, visibility: 'hidden' });
+  f.svg.appendChild(cross);
+  var hit = sv('rect', { x: f.m.l, y: f.m.t - 6, width: f.pw, height: f.ph + 34, fill: 'transparent', tabindex: 0,
+    'aria-label': o.aria + '. Use as setas para percorrer os dias.' });
+  var cur = n - 1;
+  function show(i, ev) {
+    cur = i;
+    cross.setAttribute('x1', pts[i][0]); cross.setAttribute('x2', pts[i][0]); cross.setAttribute('visibility', 'visible');
+    dots.forEach(function (c, k) { c.setAttribute('r', k === i ? 5.5 : 4); });
+    if (ev) showTip(ev.clientX, ev.clientY, titleFor(o, i), rowsFor(o, i));
+    else {
+      var r = hit.getBoundingClientRect();
+      showTip(r.left + (pts[i][0] - f.m.l), r.top + 10, titleFor(o, i), rowsFor(o, i));
+    }
+  }
+  function clear() {
+    cross.setAttribute('visibility', 'hidden');
+    dots.forEach(function (c) { c.setAttribute('r', 4); });
+    hideTip();
+  }
+  hit.addEventListener('pointermove', function (ev) {
+    var r = hit.getBoundingClientRect();
+    var i = Math.max(0, Math.min(n - 1, Math.round((ev.clientX - r.left) / f.band - 0.5)));
+    show(i, ev);
+  });
+  hit.addEventListener('pointerleave', clear);
+  hit.addEventListener('focus', function () { show(cur, null); });
+  hit.addEventListener('blur', clear);
+  hit.addEventListener('keydown', function (ev) {
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); show(Math.min(n - 1, cur + 1), null); }
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); show(Math.max(0, cur - 1), null); }
+  });
+  f.svg.appendChild(hit);
+  viz.appendChild(f.svg);
+}
+function hbars(viz, rows, o) {
+  o = o || {};
+  var max = Math.max.apply(null, rows.map(function (r) { return r.value; }).concat([1]));
+  var total = o.total || 0;
+  rows.forEach(function (r) {
+    var row = h('div', { 'class': 'hb', tabindex: 0, 'aria-label': r.label + ': ' + fmt(r.value) + ' ' + (o.unit || '') });
+    var lab = h('span', { 'class': 'hb-l' + (o.mono ? ' mono' : ''), text: r.label, title: r.label });
+    var bar = h('span', { 'class': 'hb-b', style: 'width:calc((100% - 64px) * ' + (r.value / max).toFixed(4) + ');background:var(--s1)' });
+    var val = h('span', { 'class': 'hb-v', text: fmt(r.value) });
+    row.appendChild(lab);
+    row.appendChild(h('span', { 'class': 'hb-t' }, [bar, val]));
+    var rws = [{ value: fmt(r.value), name: o.unit || '', color: 'var(--s1)' }];
+    if (total) rws.push({ value: pc(100 * r.value / total), name: 'do total', extra: true });
+    function on(ev) { if (ev) showTip(ev.clientX, ev.clientY, r.full || r.label, rws); else tipAtElement(row, r.full || r.label, rws); }
+    row.addEventListener('pointermove', on);
+    row.addEventListener('pointerleave', hideTip);
+    row.addEventListener('focus', function () { on(null); });
+    row.addEventListener('blur', hideTip);
+    viz.appendChild(row);
+  });
+}
+
+/* ---------- dados derivados ---------- */
+var A = D.acessos || {};
+var dias = D.por_dia_utc || [];
+var P = D.periodo || {};
+var topo = D.ip_mais_ativo || null;
+var temTopo = !!(topo && topo.pct_dos_acessos >= 20);
+var primeiroDia = (P.primeiro_evento_utc || '').slice(0, 10), primeiraHora = (P.primeiro_evento_utc || '').slice(11, 16);
+var ultimoDia = (P.ultimo_evento_utc || '').slice(0, 10), ultimaHora = (P.ultimo_evento_utc || '').slice(11, 16);
+function incompleto(dia) {
+  return (dia === primeiroDia && primeiraHora > '00:10') || (dia === ultimoDia && ultimaHora && ultimaHora < '23:50');
+}
+var catsDia = dias.map(function (d) {
+  var par = incompleto(d.dia);
+  return { label: ddmm(d.dia) + (par ? '*' : ''), title: ddmm(d.dia) + ' (UTC)', partial: par };
+});
+var haParcial = catsDia.some(function (c) { return c.partial; });
+
+/* ---------- página ---------- */
+var stack = h('div', { 'class': 'stack' });
+app.appendChild(h('header', { 'class': 'top' }, [
+  h('h1', { text: 'O que bate na porta de um servidor exposto na internet' }),
+  h('p', { 'class': 'lede', text: 'Painel com dados reais de um honeypot SSH: um servidor-isca, sem nenhum uso legítimo, que registra quem tenta entrar, com quais senhas e o que faz depois.' }),
+  h('p', { 'class': 'period', text: 'Coleta de ' + dataHora(P.primeiro_evento_utc) + ' a ' + dataHora(P.ultimo_evento_utc) + ' (UTC)' + (D.gerado_em ? ' · atualizado em ' + new Date(D.gerado_em).toLocaleDateString('pt-BR') : '') })
+]));
+app.appendChild(stack);
+
+/* destaque + KPIs */
+var up = (D.arquivos_enviados || []);
+var upTotal = sum(up.map(function (u) { return u.total; }));
+var top2 = h('div', { 'class': 'row-top' });
+top2.appendChild(h('section', { 'class': 'card hero' }, [
+  h('p', { 'class': 'lab', text: 'Origens diferentes (IPs distintos)' }),
+  h('div', { 'class': 'big', text: fmt(A.ips_distintos || 0) }),
+  h('p', { 'class': 'lab', text: 'tentaram entrar na isca em ' + dias.length + ' dias de coleta.' })
+]));
+var kp = h('div', { 'class': 'kpis' });
+function tile(label, value, note) {
+  kp.appendChild(h('section', { 'class': 'card tile' }, [
+    h('p', { 'class': 'l', text: label }), h('div', { 'class': 'v', text: fmt(value) }), h('p', { 'class': 'n', text: note })
+  ]));
+}
+tile('Tentativas de acesso', A.total || 0, pc(A.pct_aceitos || 0) + ' aceitas pela isca, de propósito');
+tile('Comandos digitados', (D.comandos || {}).total || 0, fmt((D.comandos || {}).distintos || 0) + ' comandos diferentes');
+tile('Arquivos enviados à isca', upTotal, fmt(up.length) + ' arquivos diferentes (hashes)');
+tile('Pedidos de túnel', (D.tuneis || {}).total || 0, 'tentativas de usar a isca como ponte');
+top2.appendChild(kp);
+stack.appendChild(top2);
+
+/* um IP só */
+if (temTopo) {
+  var seg = h('div', { 'class': 'seg', role: 'img', 'aria-label': 'Um IP: ' + pc(topo.pct_dos_acessos) + ' das tentativas; os outros: ' + pc(100 - topo.pct_dos_acessos) });
+  seg.appendChild(h('span', { style: 'flex:' + topo.acessos + ' 1 0;background:var(--s2)' }));
+  seg.appendChild(h('span', { style: 'flex:' + Math.max(topo.acessos_demais, 0) + ' 1 0;background:var(--s1)' }));
+  var dd = dur(topo.duracao_s);
+  var linha1 = h('p', {}, [
+    'Esse endereço fez ', h('strong', { text: fmt(topo.acessos) + ' tentativas' }),
+    dd ? ' em ' + dd : '',
+    (topo.duracao_s && topo.duracao_s > 0 && topo.acessos / topo.duracao_s >= 0.5) ? ' (cerca de ' + (topo.acessos / topo.duracao_s).toFixed(1).replace('.', ',') + ' por segundo)' : '',
+    ' e testou ', h('strong', { text: fmt(topo.senhas_distintas) + ' senhas diferentes' }), '.'
+  ]);
+  var calloutKids = [
+    h('h2', { text: '1 IP sozinho respondeu por ' + pc(topo.pct_dos_acessos) + ' das tentativas' }),
+    seg,
+    h('div', { 'class': 'keys' }, [
+      h('span', {}, [h('i', { style: 'background:var(--s2)' }), 'IP mais ativo ', h('b', { text: fmt(topo.acessos) })]),
+      h('span', {}, [h('i', { style: 'background:var(--s1)' }), fmt(topo.ips_demais) + ' outros IPs ', h('b', { text: fmt(topo.acessos_demais) })])
+    ]),
+    linha1
+  ];
+  if (topo.comando_principal) {
+    calloutKids.push(h('p', {}, ['O comando que ele mais rodou foi ', h('code', { text: topo.comando_principal }), ', ', fmt(topo.comando_principal_total), ' vezes.']));
+  }
+  calloutKids.push(h('p', { text: 'Um robô assim distorce qualquer contagem simples. Por isso o painel destaca os IPs distintos e tira esse IP dos gráficos por dia e por hora.' }));
+  stack.appendChild(h('section', { 'class': 'card callout' }, calloutKids));
+}
+
+/* gráficos */
+var grid = h('div', { 'class': 'cols' });
+stack.appendChild(grid);
+
+if (dias.length) {
+  var ipsDia = dias.map(function (d) { return d.ips_unicos; });
+  card(grid, {
+    title: 'IPs distintos por dia',
+    sub: 'Quantas origens diferentes apareceram em cada dia (UTC).',
+    footnote: haParcial ? '* dia incompleto: a coleta começou ou terminou no meio do dia.' : null,
+    build: function (viz) {
+      var o = { cats: catsDia, values: ipsDia, name: 'IPs distintos', aria: 'IPs distintos por dia' };
+      lineChart(viz, o);
+      return { cols: [{ label: 'Dia (UTC)' }, { label: 'IPs distintos', num: true }], rows: dias.map(function (d, i) { return [catsDia[i].label, d.ips_unicos]; }) };
+    }
+  });
+  var usaDemais = temTopo && dias[0].acessos_demais != null;
+  var vDia = dias.map(function (d) { return usaDemais ? d.acessos_demais : d.acessos; });
+  card(grid, {
+    title: usaDemais ? 'Tentativas por dia, sem o IP mais ativo' : 'Tentativas por dia',
+    sub: usaDemais ? 'O IP mais ativo ficou fora do gráfico para não esmagar os outros dias; o valor dele aparece ao passar o mouse.' : 'Contagem diária de tentativas de login (UTC).',
+    footnote: haParcial ? '* dia incompleto.' : null,
+    build: function (viz) {
+      var extra = usaDemais ? [{ name: 'IP mais ativo (fora do gráfico)', values: dias.map(function (d) { return d.acessos_ip_mais_ativo; }) }] : [];
+      columns(viz, { cats: catsDia, values: vDia, name: 'tentativas', extra: extra, aria: 'Tentativas de login por dia' });
+      var cols = [{ label: 'Dia (UTC)' }, { label: 'Tentativas', num: true }];
+      if (usaDemais) cols.push({ label: 'IP mais ativo', num: true });
+      return { cols: cols, rows: dias.map(function (d, i) { var r = [catsDia[i].label, vDia[i]]; if (usaDemais) r.push(d.acessos_ip_mais_ativo); return r; }) };
+    }
+  });
+}
+
+var horas = D.por_hora_utc || [];
+if (horas.length) {
+  var mapaH = {};
+  horas.forEach(function (x) { mapaH[x.hora] = x; });
+  var cats24 = [], v24 = [], ex24 = [];
+  var usaDemaisH = temTopo && horas[0].acessos_demais != null;
+  for (var hh = 0; hh < 24; hh++) {
+    var k = (hh < 10 ? '0' : '') + hh, it = mapaH[k];
+    cats24.push({ label: k + 'h', title: k + 'h UTC', partial: false });
+    v24.push(it ? (usaDemaisH ? it.acessos_demais : it.acessos) : 0);
+    ex24.push(it && usaDemaisH ? it.acessos_ip_mais_ativo : 0);
+  }
+  card(grid, {
+    title: usaDemaisH ? 'Tentativas por hora do dia, sem o IP mais ativo' : 'Tentativas por hora do dia',
+    sub: 'Horário UTC (subtraia 3 horas para Brasília). Soma de todos os dias.',
+    build: function (viz) {
+      columns(viz, { cats: cats24, values: v24, name: 'tentativas', extra: usaDemaisH ? [{ name: 'IP mais ativo (fora do gráfico)', values: ex24 }] : [], aria: 'Tentativas por hora do dia' });
+      return { cols: [{ label: 'Hora (UTC)' }, { label: 'Tentativas', num: true }], rows: cats24.map(function (c, i) { return [c.label, v24[i]]; }) };
+    }
+  });
+}
+
+var senhas = (D.top_senhas || []).slice(0, 10);
+if (senhas.length) {
+  card(grid, {
+    title: 'Senhas mais tentadas',
+    sub: 'As dez mais usadas nas tentativas de login (tentativas com chave pública não entram).',
+    build: function (viz) {
+      hbars(viz, senhas.map(function (s) { return { label: s.valor === '' ? '(vazia)' : s.valor, value: s.total }; }), { unit: 'tentativas', mono: true });
+      return { cols: [{ label: 'Senha' }, { label: 'Tentativas', num: true }], rows: senhas.map(function (s) { return [s.valor === '' ? '(vazia)' : s.valor, s.total]; }) };
+    }
+  });
+}
+var usaUsrDemais = temTopo && !!D.top_usuarios_sem_ip_mais_ativo;
+var usuarios = (usaUsrDemais ? D.top_usuarios_sem_ip_mais_ativo : (D.top_usuarios || [])).slice(0, 8);
+if (usuarios.length) {
+  card(grid, {
+    title: usaUsrDemais ? 'Usuários mais tentados, sem o IP mais ativo' : 'Usuários mais tentados',
+    sub: usaUsrDemais ? 'Nomes de usuário que os robôs tentam primeiro. O IP mais ativo ficou de fora para não dominar a lista.' : 'Nomes de usuário que os robôs tentam primeiro.',
+    build: function (viz) {
+      hbars(viz, usuarios.map(function (s) { return { label: s.valor === '' ? '(vazio)' : s.valor, value: s.total }; }), { unit: 'tentativas', mono: true });
+      return { cols: [{ label: 'Usuário' }, { label: 'Tentativas', num: true }], rows: usuarios.map(function (s) { return [s.valor === '' ? '(vazio)' : s.valor, s.total]; }) };
+    }
+  });
+}
+
+var PORTAS = { 22: 'SSH', 23: 'Telnet', 25: 'SMTP (e-mail)', 53: 'DNS', 80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS', 465: 'SMTPS', 587: 'SMTP (envio)', 993: 'IMAPS', 995: 'POP3S', 3306: 'MySQL', 3389: 'RDP', 8080: 'HTTP alternativo' };
+var tun = D.tuneis || {};
+var portas = (tun.portas_de_destino || []).slice(0, 8);
+if (tun.total > 0 && portas.length) {
+  card(grid, {
+    title: 'Para onde os invasores tentaram abrir túneis',
+    sub: 'Pedidos para usar a isca como ponte até outro servidor, por porta de destino.',
+    build: function (viz) {
+      var rows = portas.map(function (p) {
+        var nome = PORTAS[p.valor];
+        return { label: p.valor + (nome ? ' · ' + nome : ''), value: p.total };
+      });
+      hbars(viz, rows, { unit: 'pedidos', total: tun.total });
+      return { cols: [{ label: 'Porta de destino' }, { label: 'Pedidos', num: true }], rows: rows.map(function (r) { return [r.label, r.value]; }) };
+    }
+  });
+}
+
+var paises = (D.paises || []).slice(0, 10);
+if (paises.length) {
+  card(grid, {
+    title: 'IPs por país de origem',
+    sub: 'País registrado para o endereço de origem. Pode não ser onde o invasor está de verdade (VPN, servidor alugado).',
+    footnote: D.paises_fonte ? 'Fonte da localização: ' + D.paises_fonte + (D.paises_distintos ? ' · ' + D.paises_distintos + ' países no total' : '') + '.' : null,
+    build: function (viz) {
+      hbars(viz, paises.map(function (p) { return { label: p.valor, value: p.total }; }), { unit: 'IPs' });
+      return { cols: [{ label: 'País' }, { label: 'IPs', num: true }], rows: paises.map(function (p) { return [p.valor, p.total]; }) };
+    }
+  });
+}
+
+/* comandos */
+function tipoCmd(c) {
+  var s = c.toLowerCase();
+  if (/\\x[0-9a-f]{2}/.test(s) || /^echo\b/.test(s)) return 'Teste de resposta da shell';
+  if (/_filter|v=outer|read -r|printf/.test(s)) return 'Teste de shell (possível detecção de honeypot)';
+  if (/uname|\/proc\/|lscpu|whoami|\bid\b|hostname|\/etc\//.test(s)) return 'Reconhecimento do sistema';
+  if (/chmod|nohup|sh -c|\.\/\S/.test(s)) return 'Execução de arquivo';
+  if (/wget|curl|tftp|ftpget/.test(s)) return 'Download';
+  return 'Outro';
+}
+var cmds = (D.comandos || {}).top || [];
+if (cmds.length) {
+  var tb = h('table', {}, [
+    h('thead', {}, [h('tr', {}, [h('th', { text: 'Comando' }), h('th', { 'class': 'num', text: 'Vezes' }), h('th', { text: 'Tipo (classificação automática)' })])]),
+    h('tbody', {}, cmds.slice(0, 10).map(function (c) {
+      return h('tr', {}, [h('td', {}, [h('code', { text: c.valor })]), h('td', { 'class': 'num', text: fmt(c.total) }), h('td', {}, [h('span', { 'class': 'tag', text: tipoCmd(c.valor) })])]);
+    }))
+  ]);
+  var cc = h('section', { 'class': 'card' }, [
+    h('h2', { text: 'O que os invasores digitaram' }),
+    h('p', { 'class': 'sub', text: 'Os dez comandos mais executados dentro da shell falsa.' + ((temTopo && topo.comando_principal === cmds[0].valor && topo.comando_principal_total >= 0.9 * cmds[0].total) ? ' O primeiro da lista vem quase todo do IP mais ativo.' : '') + ' A coluna de tipo vem de regras simples de texto e pode errar.' }),
+    h('div', { 'class': 'tw' }, [tb])
+  ]);
+  stack.appendChild(cc);
+}
+
+/* arquivos */
+if (up.length) {
+  var vtLista = Array.isArray(D.virustotal) ? D.virustotal : [];
+  var temVT = vtLista.length > 0;
+  function achaVT(sha) {
+    var s = String(sha || '').toLowerCase();
+    for (var i = 0; i < vtLista.length; i++) {
+      var p = String(vtLista[i].sha256_prefixo || '').toLowerCase();
+      if (p.length >= 8 && s.indexOf(p) === 0) return vtLista[i];
+    }
+    return null;
+  }
+  var rowsUp = up.slice(0, 8).map(function (u) {
+    var okHash = /^[0-9a-f]{64}$/i.test(u.sha256 || '');
+    var cel = okHash
+      ? h('a', { href: 'https://www.virustotal.com/gui/file/' + u.sha256, target: '_blank', rel: 'noopener noreferrer', text: u.sha256.slice(0, 12) + '…' })
+      : h('span', { text: u.sha256 ? String(u.sha256).slice(0, 12) + '…' : '—' });
+    var celulas = [h('td', {}, [h('code', { text: u.nome || '(sem nome)' })]), h('td', {}, [h('code', {}, [cel])])];
+    if (temVT) {
+      var v = achaVT(u.sha256);
+      celulas.push(h('td', {}, [v ? h('span', {}, [h('strong', { text: String(v.placar || '') }), v.rotulo ? ' · ' + v.rotulo : '']) : '—']));
+    }
+    celulas.push(h('td', { 'class': 'num', text: fmt(u.total) }));
+    return h('tr', {}, celulas);
+  });
+  stack.appendChild(h('section', { 'class': 'card' }, [
+    h('h2', { text: 'Arquivos que os invasores enviaram à isca' }),
+    h('p', { 'class': 'sub', text: 'Identificados pelo hash SHA-256. O link abre a análise pública do VirusTotal.' + (temVT ? ' Placares consultados em ' + Array.from(new Set(vtLista.map(function (v) { return v.consultado_em ? ddmm(String(v.consultado_em)) : ''; }).filter(Boolean))).sort().join(' e ') + '; podem mudar com o tempo.' : '') + ' Nenhum arquivo é publicado aqui.' }),
+    h('div', { 'class': 'tw' }, [h('table', { 'class': 'last-num' }, [
+      h('thead', {}, [h('tr', {}, [h('th', { text: 'Nome' }), h('th', { text: 'SHA-256' }), temVT ? h('th', { text: 'VirusTotal (placar · rótulo)' }) : null, h('th', { 'class': 'num', text: 'Vezes' })])]),
+      h('tbody', {}, rowsUp)
+    ])])
+  ]));
+}
+
+/* sobre */
+var rodape = h('footer', {});
+var partes = [];
+if (META.autor) partes.push(document.createTextNode('Projeto de ' + META.autor + '.'));
+if (META.repo && /^https:\/\//.test(META.repo)) {
+  if (partes.length) partes.push(document.createTextNode(' '));
+  partes.push(h('a', { href: META.repo, target: '_blank', rel: 'noopener noreferrer', text: 'Código e metodologia no GitHub' }));
+}
+partes.forEach(function (p) { rodape.appendChild(p); });
+stack.appendChild(h('section', { 'class': 'card about' }, [
+  h('h2', { text: 'Sobre os dados' }),
+  h('p', {}, [h('strong', { text: 'Honeypot: ' }), 'o Cowrie imita um servidor SSH e registra tudo o que o visitante faz. Ninguém legítimo usa esse servidor, então todo acesso é suspeito.']),
+  h('p', {}, [h('strong', { text: 'Por que quase tudo é "aceito": ' }), 'a isca deixa o visitante entrar de propósito, para ver o que ele faz lá dentro. Isso não é uma falha de segurança.']),
+  h('p', {}, [h('strong', { text: 'Tentativas, não ataques: ' }), 'muitas tentativas vêm de robôs automáticos, e um robô pode gerar milhares delas. Por isso o número de IPs distintos diz mais do que o de tentativas.']),
+  h('p', {}, [h('strong', { text: 'Privacidade: ' }), 'este painel não mostra endereços IP. Os acessos do próprio autor foram removidos antes da análise.'])
+]));
+if (rodape.childNodes.length) stack.appendChild(rodape);
+})();
+</script>
+</body>
+</html>

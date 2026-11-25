@@ -1,0 +1,26 @@
+[
+ {
+  "sha256_prefixo": "a151d3f4f242",
+  "placar": "36/64",
+  "rotulo": "miner.malxmr/rootkit",
+  "consultado_em": "2026-11-20"
+ },
+ {
+  "sha256_prefixo": "94f2e4d8d443",
+  "placar": "48/64",
+  "rotulo": "miner.genericrxss/multiverze",
+  "consultado_em": "2026-11-20"
+ },
+ {
+  "sha256_prefixo": "6affa839f6a4",
+  "placar": "18/63",
+  "rotulo": "trojan.genericfca/qwexlafiba",
+  "consultado_em": "2026-11-20"
+ },
+ {
+  "sha256_prefixo": "6d1fe6ab3cd0",
+  "placar": "40/61",
+  "rotulo": "trojan.ircbot/shell (bot de IRC)",
+  "consultado_em": "2026-11-25"
+ }
+]
