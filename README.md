@@ -49,4 +49,4 @@ python gerar_dashboard.py --autor "Seu Nome"
 
 Os dados descrevem o que bateu neste servidor, nestas semanas. A isca aceita qualquer senha de propósito, IP não é pessoa, e o país é o do registro do IP. Detalhes no relatório.
 
-Projeto de Rafael Pavan, estudante de Segurança da Informação (Unisinos).
+Projeto de Rafael Pavan, estudante de Segurança da Informação (Universidade do Vale do Rio dos Sinos).
